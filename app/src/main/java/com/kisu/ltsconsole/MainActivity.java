@@ -4,103 +4,71 @@ import android.app.Activity;
 import android.graphics.Color;
 import android.net.http.SslError;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.SslErrorHandler;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 public class MainActivity extends Activity {
 
-    private static final String TAG = "LTS";
-    private WebView mWebView;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         // 全屏无状态栏
-        hideSystemUI();
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().getDecorView().setSystemUiVisibility(
+                  View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        );
 
-        // ✅ 必须用 this（Activity Context），绝不能用 getApplicationContext()
-        mWebView = new WebView(this);
-        setContentView(mWebView);
+        WebView wv = new WebView(this);
+        setContentView(wv);
 
-        WebSettings s = mWebView.getSettings();
+        WebSettings s = wv.getSettings();
+
+        // 必须开的
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
-        s.setMediaPlaybackRequiresUserGesture(false);
 
-        // 让 Cookie 正常运作（控制台常需要 session）
+        // 让网页认为这是较新的 Chrome（重点）
+        String chromeUa = s.getUserAgentString();
+        // 把 "Version/4.0" 之类的老标记干掉，强化 Chrome 标识
+        if (chromeUa != null) {
+            chromeUa = chromeUa
+                .replaceAll("; wv\\)", "")   // 去掉 wv 标记（可选，但很多网页靠这玩意区分）
+                .replaceAll("AppleWebKit/537\\.\\d+", "AppleWebKit/537.36");
+        }
+        // 兜底：更像 Chrome
+        s.setUserAgentString(
+            chromeUa == null
+                ? "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+                : chromeUa
+        );
+
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
-        cm.setAcceptThirdPartyCookies(mWebView, true);
+        cm.setAcceptThirdPartyCookies(wv, true);
 
-        mWebView.setWebViewClient(new WebViewClient() {
-
-            // 处理自签名/证书不匹配（你公网IP的HTTPS常见）
+        wv.setWebViewClient(new WebViewClient() {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
-                Log.w(TAG, "SSL error, proceed: " + error);
-                handler.proceed();  // ⚠️ 仅限可控环境
-            }
-
-            @Override
-            public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
-                int code = err.getErrorCode();
-                String desc = String.valueOf(err.getDescription());
-                Log.e(TAG, "err=" + code + " url=" + req.getUrl() + " desc=" + desc);
+                handler.proceed(); // ⚠️ 自签/不匹配常用；你公网IP+HTTPS常见
             }
         });
 
-        Log.i(TAG, "loading https://120.79.247.156/");
-        mWebView.loadUrl("https://120.79.247.156/");
-    }
-
-    private void hideSystemUI() {
-        getWindow().setStatusBarColor(Color.TRANSPARENT);
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-              | View.SYSTEM_UI_FLAG_FULLSCREEN
-              | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        );
+        wv.loadUrl("https://120.79.247.156/");
     }
 
     @Override
     public void onBackPressed() {
-        if (mWebView != null && mWebView.canGoBack()) {
-            mWebView.goBack();
-        } else {
-            super.onBackPressed();
-        }
-    }
-
-    @Override
-    protected void onPause() {
-        if (mWebView != null) mWebView.onPause();
-        super.onPause();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (mWebView != null) mWebView.onResume();
-    }
-
-    @Override
-    protected void onDestroy() {
-        if (mWebView != null) {
-            mWebView.stopLoading();
-            mWebView.clearHistory();
-            mWebView.destroy();
-            mWebView = null;
-        }
-        super.onDestroy();
+        WebView wv = (WebView) getWindow().getDecorView().findViewById(android.R.id.content);
+        if (wv != null && wv.canGoBack()) wv.goBack();
+        else super.onBackPressed();
     }
 }
